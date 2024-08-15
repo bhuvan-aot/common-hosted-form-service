@@ -1,5 +1,5 @@
 const request = require('supertest');
-const { v4: uuidv4 } = require('uuid');
+const uuid = require('uuid');
 
 const { expressHelper } = require('../../../common/helper');
 
@@ -81,6 +81,7 @@ describe(`${basePath}`, () => {
   it('should have correct middleware for POST', async () => {
     await appRequest.post(path);
 
+    expect(validateParameter.validateFileId).toBeCalledTimes(0);
     expect(apiAccess).toBeCalledTimes(0);
     expect(filePermissions.currentFileRecord).toBeCalledTimes(0);
     expect(filePermissions.hasFileCreate).toBeCalledTimes(1);
@@ -93,13 +94,13 @@ describe(`${basePath}`, () => {
 });
 
 describe(`${basePath}/:id`, () => {
-  const fileId = uuidv4();
+  const fileId = uuid.v4();
   const path = `${basePath}/${fileId}`;
 
   it('should have correct middleware for DELETE', async () => {
     await appRequest.delete(path);
 
-    // expect(validateParameter.validateFileId).toBeCalledTimes(1);
+    expect(validateParameter.validateFileId).toBeCalledTimes(1);
     expect(apiAccess).toBeCalledTimes(0);
     expect(filePermissions.currentFileRecord).toBeCalledTimes(1);
     expect(filePermissions.hasFileCreate).toBeCalledTimes(0);
@@ -113,7 +114,7 @@ describe(`${basePath}/:id`, () => {
   it('should have correct middleware for GET', async () => {
     await appRequest.get(path);
 
-    // expect(validateParameter.validateFileId).toBeCalledTimes(1);
+    expect(validateParameter.validateFileId).toBeCalledTimes(1);
     expect(apiAccess).toBeCalledTimes(1);
     expect(filePermissions.currentFileRecord).toBeCalledTimes(1);
     expect(filePermissions.hasFileCreate).toBeCalledTimes(0);
