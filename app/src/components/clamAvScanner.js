@@ -11,9 +11,15 @@ class ClamAVScanner {
   constructor() {
     this.clamscan = null;
     this.isInitialized = false;
+    this.disabled = true;
+    if (this.disabled) {
+      log.warn('ClamAV is disabled by configuration.');
+    }
   }
 
   async _initialize() {
+    if (this.disabled) return;
+
     try {
       this.clamscan = await new NodeClam().init({
         removeInfected: true, // If true, removes infected files
@@ -24,7 +30,7 @@ class ClamAVScanner {
           host: host, // IP of host to connect to TCP interface
           port: port, // Port of host to use when connecting via TCP interface
           timeout: 60000, // Timeout for scanning files
-          localFallback: false, // Use local preferred binary to scan if socket/tcp fails
+          localFallback: config.get('files.clamav.localFallback') || false, // Use local preferred binary to scan if socket/tcp fails
           multiscan: true, // Scan using all available cores! Yay!
           active: true, // If true, this module will consider using the clamdscan binary
           bypassTest: false, // Check to see if socket is available when applicable

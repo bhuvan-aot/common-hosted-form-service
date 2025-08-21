@@ -13,13 +13,9 @@ const v1Router = require('./src/routes/v1');
 
 const DataConnection = require('./src/db/dataConnection');
 const dataConnection = new DataConnection();
-const { eventStreamService } = require('./src/components/eventStreamService');
-const clamAvScanner = require('./src/components/clamAvScanner');
 
 const statusService = require('./src/components/statusService');
 statusService.registerConnection('dataConnection', 'Database', dataConnection, 'checkAll', 'checkConnection');
-statusService.registerConnection('eventStreamService', 'Event Stream Service', eventStreamService, 'checkConnection', 'checkConnection');
-statusService.registerConnection('clamAvScanner', 'Virus Scanner', clamAvScanner, 'checkConnection', 'checkConnection');
 
 const apiRouter = express.Router();
 

@@ -750,6 +750,24 @@ defineExpose({
                 $t('trans.submissionsTable.submissionsToFiles')
               }}</span>
             </v-tooltip>
+            <v-tooltip v-if="showSubmissionsExport" location="bottom">
+              <template #activator="{ props }">
+                <router-link :to="{ name: 'showCharts', query: { f: formId } }">
+                  <v-btn
+                    class="mx-1"
+                    color="primary"
+                    v-bind="props"
+                    size="x-small"
+                    density="default"
+                    icon="mdi:mdi-download"
+                    :title="$t('trans.submissionsTable.showCharts')"
+                  />
+                </router-link>
+              </template>
+              <span :lang="locale">{{
+                $t('trans.submissionsTable.showCharts')
+              }}</span>
+            </v-tooltip>
           </span>
         </div>
       </div>

@@ -607,6 +607,7 @@
     "selectColumns": "Select Columns",
     "manageForm": "Manage Form",
     "submissionsToFiles": "Export Submissions to Files",
+    "showCharts": "Show Charts",
     "showDeletedSubmissions": "Show deleted submissions",
     "showMySubmissions": "Show my submissions",
     "search": "Search",
@@ -783,6 +784,9 @@
     "updatedBy": "Updated By",
     "getSubmissionStatusErr": "An error occurred while trying to fetch statuses.",
     "getSubmissionStatusConsErr": "Error adding note:"
+  },
+  "Charts": {
+    "reportsPlayground": "Reports Playground"
   },
   "exportSubmissions": {
     "exportSubmissionsToFile": "Export Submissions to File",

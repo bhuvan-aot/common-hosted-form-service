@@ -140,6 +140,17 @@ export default function getRouter(basePath = '/') {
             props: createProps,
           },
           {
+            path: 'export',
+            name: 'showCharts',
+            component: () => import('~/views/form/Charts.vue'),
+            meta: {
+              breadcrumbTitle: 'submissions reports',
+              requiresAuth: true,
+              hasLogin: true,
+            },
+            props: createProps,
+          },
+          {
             path: 'manage',
             name: 'FormManage',
             component: () => import('~/views/form/Manage.vue'),
