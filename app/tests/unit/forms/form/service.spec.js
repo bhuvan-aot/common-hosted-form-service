@@ -643,15 +643,14 @@ describe('listFormSubmissions', () => {
     MockModel.mockResolvedValue([]);
   });
 
-  describe('400 response when', () => {
+  describe('should not error when sortBy column is not in select', () => {
     test('sort by column not in select', async () => {
-      await expect(
-        service.listFormSubmissions(formId, {
-          sortBy: {
-            column: 'x',
-          },
-        })
-      ).rejects.toThrow('400');
+      await service.listFormSubmissions(formId, {
+        sortBy: {
+          column: 'x',
+        },
+      });
+      expect(MockModel.select).toBeCalledTimes(1);
     });
   });
 
@@ -1180,6 +1179,30 @@ describe('createOrUpdateEmailTemplates', () => {
   });
 });
 
+describe('_validateReminderSettings', () => {
+  afterEach(() => {
+    // Restore any mocked functions after each test
+    jest.restoreAllMocks();
+  });
+
+  it('returns false if reminder_enabled is false', () => {
+    const data = { reminder_enabled: false };
+    expect(service._validateReminderSettings(data)).toBe(false);
+  });
+
+  it('returns false if schedule is missing or not enabled or manual type', () => {
+    const cases = [
+      { reminder_enabled: true }, // no schedule
+      { reminder_enabled: true, schedule: { enabled: false } },
+      { reminder_enabled: true, schedule: { enabled: true, scheduleType: ScheduleType.MANUAL } },
+    ];
+
+    cases.forEach((data) => {
+      expect(service._validateReminderSettings(data)).toBe(false);
+    });
+  });
+});
+
 describe('validation helpers', () => {
   beforeEach(() => {
     MockModel.mockReset();
@@ -1246,6 +1269,38 @@ describe('createForm', () => {
     await expect(service.createForm({ name: 'fail' }, currentUser)).rejects.toThrow('DB error');
     expect(MockTransaction.rollback).toHaveBeenCalled();
   });
+
+  it('should properly handle enableSubmitterRevision in createForm', async () => {
+    service.validateScheduleObject = jest.fn().mockReturnValueOnce({ status: 'success' });
+    service.readForm = jest.fn().mockReturnValueOnce({});
+    formMetadataService.upsert = jest.fn().mockResolvedValueOnce();
+    eventStreamConfigService.upsert = jest.fn().mockResolvedValueOnce();
+
+    const data = {
+      name: 'Test Form',
+      identityProviders: [{ code: 'idir' }],
+      enableSubmitterRevision: true,
+      enableStatusUpdates: false,
+      showAssigneeInSubmissionsTable: true,
+    };
+
+    // Mock the Form.insert to capture what's being inserted
+    const mockInsert = jest.fn().mockResolvedValue({ id: formId });
+    Form.query = jest.fn().mockReturnValue({
+      insert: mockInsert,
+    });
+
+    await service.createForm(data, currentUser);
+
+    // Verify that enableSubmitterRevision was passed to the insert
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enableSubmitterRevision: true,
+        enableStatusUpdates: false,
+        showAssigneeInSubmissionsTable: true, // Should be true because of the OR logic
+      })
+    );
+  });
 });
 
 describe('updateForm', () => {
@@ -1283,6 +1338,39 @@ describe('updateForm', () => {
 
     await expect(service.updateForm(formId, { name: 'fail', schedule: {} }, currentUser)).rejects.toThrow('DB error');
     expect(MockTransaction.rollback).toHaveBeenCalled();
+  });
+
+  it('should properly handle enableSubmitterRevision in updateForm', async () => {
+    service.validateScheduleObject = jest.fn().mockReturnValueOnce({ status: 'success' });
+    service.readForm = jest.fn().mockResolvedValue({ id: formId });
+    formMetadataService.upsert = jest.fn().mockResolvedValueOnce();
+    eventStreamConfigService.upsert = jest.fn().mockResolvedValueOnce();
+
+    const data = {
+      name: 'Updated Test Form',
+      identityProviders: [{ code: 'idir' }],
+      enableSubmitterRevision: true,
+      enableStatusUpdates: false,
+      showAssigneeInSubmissionsTable: true,
+    };
+
+    // Mock the Form.patchAndFetchById to capture what's being updated
+    const mockPatchAndFetchById = jest.fn().mockResolvedValue({ id: formId });
+    Form.query = jest.fn().mockReturnValue({
+      patchAndFetchById: mockPatchAndFetchById,
+    });
+
+    await service.updateForm(formId, data, currentUser);
+
+    // Verify that enableSubmitterRevision was passed to the patch
+    expect(mockPatchAndFetchById).toHaveBeenCalledWith(
+      formId,
+      expect.objectContaining({
+        enableSubmitterRevision: true,
+        enableStatusUpdates: false,
+        showAssigneeInSubmissionsTable: true, // Should be true because of the OR logic
+      })
+    );
   });
 });
 
@@ -1431,6 +1519,7 @@ describe('Assignee Visibility Feature Tests', () => {
       const formData = {
         showAssigneeInSubmissionsTable: true,
         enableStatusUpdates: false,
+        enableSubmitterRevision: false,
         identityProviders: [{ code: 'idir' }],
       };
 
@@ -1445,6 +1534,7 @@ describe('Assignee Visibility Feature Tests', () => {
         const formData = {
           showAssigneeInSubmissionsTable: true,
           enableStatusUpdates: true,
+          enableSubmitterRevision: false,
           identityProviders: [identityProvider],
         };
 
@@ -1457,6 +1547,7 @@ describe('Assignee Visibility Feature Tests', () => {
       const formData = {
         showAssigneeInSubmissionsTable: true,
         enableStatusUpdates: true,
+        enableSubmitterRevision: false,
         identityProviders: [],
       };
 
@@ -1468,6 +1559,95 @@ describe('Assignee Visibility Feature Tests', () => {
       const formData = {
         showAssigneeInSubmissionsTable: true,
         enableStatusUpdates: true,
+        enableSubmitterRevision: false,
+      };
+
+      const result = service._setAssigneeInSubmissionsTable(formData);
+      expect(result).toBe(true);
+    });
+
+    // New tests for enableSubmitterRevision logic
+    it('should return true when enableSubmitterRevision is true and enableStatusUpdates is false', () => {
+      const formData = {
+        showAssigneeInSubmissionsTable: true,
+        enableStatusUpdates: false,
+        enableSubmitterRevision: true,
+        identityProviders: [{ code: 'idir' }],
+      };
+
+      const result = service._setAssigneeInSubmissionsTable(formData);
+      expect(result).toBe(true);
+    });
+
+    it('should return true when enableStatusUpdates is true and enableSubmitterRevision is false', () => {
+      const formData = {
+        showAssigneeInSubmissionsTable: true,
+        enableStatusUpdates: true,
+        enableSubmitterRevision: false,
+        identityProviders: [{ code: 'idir' }],
+      };
+
+      const result = service._setAssigneeInSubmissionsTable(formData);
+      expect(result).toBe(true);
+    });
+
+    it('should return true when both enableStatusUpdates and enableSubmitterRevision are true', () => {
+      const formData = {
+        showAssigneeInSubmissionsTable: true,
+        enableStatusUpdates: true,
+        enableSubmitterRevision: true,
+        identityProviders: [{ code: 'idir' }],
+      };
+
+      const result = service._setAssigneeInSubmissionsTable(formData);
+      expect(result).toBe(true);
+    });
+
+    it('should return false when both enableStatusUpdates and enableSubmitterRevision are false', () => {
+      const formData = {
+        showAssigneeInSubmissionsTable: true,
+        enableStatusUpdates: false,
+        enableSubmitterRevision: false,
+        identityProviders: [{ code: 'idir' }],
+      };
+
+      const result = service._setAssigneeInSubmissionsTable(formData);
+      expect(result).toBe(false);
+    });
+
+    it('should return true when enableSubmitterRevision is true regardless of identity provider', () => {
+      const testCases = [{ code: 'public' }, { code: 'idir' }, { code: 'bceid' }, { code: 'bceidbusiness' }];
+
+      testCases.forEach((identityProvider) => {
+        const formData = {
+          showAssigneeInSubmissionsTable: true,
+          enableStatusUpdates: false,
+          enableSubmitterRevision: true,
+          identityProviders: [identityProvider],
+        };
+
+        const result = service._setAssigneeInSubmissionsTable(formData);
+        expect(result).toBe(true);
+      });
+    });
+
+    it('should return true when enableSubmitterRevision is true with empty identityProviders array', () => {
+      const formData = {
+        showAssigneeInSubmissionsTable: true,
+        enableStatusUpdates: false,
+        enableSubmitterRevision: true,
+        identityProviders: [],
+      };
+
+      const result = service._setAssigneeInSubmissionsTable(formData);
+      expect(result).toBe(true);
+    });
+
+    it('should return true when enableSubmitterRevision is true with missing identityProviders', () => {
+      const formData = {
+        showAssigneeInSubmissionsTable: true,
+        enableStatusUpdates: false,
+        enableSubmitterRevision: true,
       };
 
       const result = service._setAssigneeInSubmissionsTable(formData);
@@ -1757,17 +1937,10 @@ describe('listFormSubmission helpers', () => {
     const { fields } = service._buildSelectionAndFields(params, true);
     expect(fields).toContain('lateEntry');
   });
-  it('should throw 400 if sortBy column not in selection or fields', () => {
+  it('should remove sortBy if column not in selection or fields', () => {
     const params = { sortBy: { column: 'notAColumn' } };
-    try {
-      service._validateSortBy(params, ['a'], ['b']);
-      // If no error is thrown, fail the test
-      throw new Error('Did not throw');
-    } catch (err) {
-      expect(err).toBeInstanceOf(require('api-problem'));
-      expect(err.status).toBe(400);
-      expect(err.details).toMatch(/orderBy column/);
-    }
+    service._validateSortBy(params, ['a'], ['b']);
+    expect(params.sortBy).toBeUndefined();
   });
 });
 
@@ -2131,7 +2304,7 @@ describe('Branch coverage for assignee and selection helpers', () => {
     });
 
     it('returns false if enableStatusUpdates is false', () => {
-      const formData = { showAssigneeInSubmissionsTable: true, enableStatusUpdates: false, identityProviders: [{ code: 'idir' }] };
+      const formData = { showAssigneeInSubmissionsTable: true, enableStatusUpdates: false, enableSubmitterRevision: false, identityProviders: [{ code: 'idir' }] };
       expect(service._setAssigneeInSubmissionsTable(formData)).toBe(false);
     });
 
@@ -2144,6 +2317,27 @@ describe('Branch coverage for assignee and selection helpers', () => {
       const formData = { showAssigneeInSubmissionsTable: true, enableStatusUpdates: true };
       expect(service._setAssigneeInSubmissionsTable(formData)).toBe(true);
     });
+
+    // New tests for enableSubmitterRevision logic
+    it('returns true if enableSubmitterRevision is true and enableStatusUpdates is false', () => {
+      const formData = { showAssigneeInSubmissionsTable: true, enableStatusUpdates: false, enableSubmitterRevision: true, identityProviders: [{ code: 'idir' }] };
+      expect(service._setAssigneeInSubmissionsTable(formData)).toBe(true);
+    });
+
+    it('returns false if both enableStatusUpdates and enableSubmitterRevision are false', () => {
+      const formData = { showAssigneeInSubmissionsTable: true, enableStatusUpdates: false, enableSubmitterRevision: false, identityProviders: [{ code: 'idir' }] };
+      expect(service._setAssigneeInSubmissionsTable(formData)).toBe(false);
+    });
+
+    it('returns true if enableSubmitterRevision is true and identityProviders includes public', () => {
+      const formData = { showAssigneeInSubmissionsTable: true, enableStatusUpdates: false, enableSubmitterRevision: true, identityProviders: [{ code: 'public' }] };
+      expect(service._setAssigneeInSubmissionsTable(formData)).toBe(true);
+    });
+
+    it('returns true if enableSubmitterRevision is true and identityProviders is missing', () => {
+      const formData = { showAssigneeInSubmissionsTable: true, enableStatusUpdates: false, enableSubmitterRevision: true };
+      expect(service._setAssigneeInSubmissionsTable(formData)).toBe(true);
+    });
   });
 
   describe('_shouldIncludeAssignee', () => {
@@ -2153,7 +2347,7 @@ describe('Branch coverage for assignee and selection helpers', () => {
     });
 
     it('returns false if enableStatusUpdates is false', () => {
-      const form = { showAssigneeInSubmissionsTable: true, enableStatusUpdates: false, identityProviders: [{ code: 'idir' }] };
+      const form = { showAssigneeInSubmissionsTable: true, enableStatusUpdates: false, enableSubmitterRevision: false, identityProviders: [{ code: 'idir' }] };
       expect(service._shouldIncludeAssignee(form)).toBe(false);
     });
 
@@ -2202,21 +2396,27 @@ describe('Branch coverage for assignee and selection helpers', () => {
     it('does not throw if sortBy.column is in selection', () => {
       const params = { sortBy: { column: 'foo' } };
       expect(() => service._validateSortBy(params, ['foo'], ['bar'])).not.toThrow();
+      expect(params.sortBy).toBeDefined();
     });
 
     it('does not throw if sortBy.column is in fields', () => {
       const params = { sortBy: { column: 'bar' } };
       expect(() => service._validateSortBy(params, ['foo'], ['bar'])).not.toThrow();
+      expect(params.sortBy).toBeDefined();
     });
 
-    it('throws Problem 400 if sortBy.column is not in selection or fields', () => {
+    it('does not throw if sortBy.column is not in selection or fields, removes sortBy', () => {
       const params = { sortBy: { column: 'baz' } };
-      expect(() => service._validateSortBy(params, ['foo'], ['bar'])).toThrow(expect.any(require('api-problem')));
+      expect(params.sortBy).toBeDefined();
+      expect(() => service._validateSortBy(params, ['foo'], ['bar'])).not.toThrow();
+      expect(params.sortBy).toBeUndefined();
     });
 
-    it('does not throw if sortBy is missing', () => {
+    it('does not throw if sortBy is missing, removes sortBy', () => {
       const params = {};
+      expect(params.sortBy).toBeUndefined();
       expect(() => service._validateSortBy(params, ['foo'], ['bar'])).not.toThrow();
+      expect(params.sortBy).toBeUndefined();
     });
   });
 });
@@ -2275,9 +2475,8 @@ describe('processPaginationData', () => {
   });
 
   it('should return all results when itemsPerPage is -1 (no search)', async () => {
-    mockQuery.page.mockResolvedValue({ results: [1, 2, 3], total: 3 });
-    const result = await service.processPaginationData(mockQuery, 0, -1, 3, null, false);
-    expect(mockQuery.page).toHaveBeenCalledWith(0, 3);
+    const query = Promise.resolve({ results: [1, 2, 3], total: 3 });
+    const result = await service.processPaginationData(query, 0, -1, 3, null, false);
     expect(result.results).toEqual([1, 2, 3]);
     expect(result.total).toBe(3);
   });
@@ -2555,5 +2754,68 @@ describe('listFormComponentsProactiveHelp', () => {
 
     const result = await service.listFormComponentsProactiveHelp();
     expect(result).toEqual({});
+  });
+});
+
+describe('_setAllowSubmitterToUploadFile', () => {
+  it('returns true if identityProviders does not include public', () => {
+    const formData = {
+      identityProviders: [{ code: 'idir' }],
+      allowSubmitterToUploadFile: true,
+    };
+    expect(service._setAllowSubmitterToUploadFile(formData)).toBe(true);
+  });
+
+  it('returns false if identityProviders includes public and allowSubmitterToUploadFile is truthy', () => {
+    const formData = {
+      identityProviders: [{ code: 'public' }],
+      allowSubmitterToUploadFile: true,
+    };
+    expect(service._setAllowSubmitterToUploadFile(formData)).toBe(false);
+  });
+
+  it('returns false if allowSubmitterToUploadFile is false', () => {
+    const formData = {
+      identityProviders: [{ code: 'idir' }],
+      allowSubmitterToUploadFile: false,
+    };
+    expect(service._setAllowSubmitterToUploadFile(formData)).toBe(false);
+  });
+
+  it('returns true if identityProviders is missing (team protected) and allow is true', () => {
+    const formData = {
+      allowSubmitterToUploadFile: true,
+    };
+    expect(service._setAllowSubmitterToUploadFile(formData)).toBe(true);
+  });
+
+  it('returns false if identityProviders is missing (team protected) and allow is false', () => {
+    const formData = {
+      allowSubmitterToUploadFile: false,
+    };
+    expect(service._setAllowSubmitterToUploadFile(formData)).toBe(false);
+  });
+
+  it('returns true if identityProviders is empty and allow is true', () => {
+    const formData = {
+      identityProviders: [],
+      allowSubmitterToUploadFile: true,
+    };
+    expect(service._setAllowSubmitterToUploadFile(formData)).toBe(true);
+  });
+
+  it('returns false if identityProviders is empty and allow is false', () => {
+    const formData = {
+      identityProviders: [],
+      allowSubmitterToUploadFile: false,
+    };
+    expect(service._setAllowSubmitterToUploadFile(formData)).toBe(false);
+  });
+
+  it('returns false if allowSubmitterToUploadFile is missing', () => {
+    const formData = {
+      identityProviders: [{ code: 'idir' }],
+    };
+    expect(service._setAllowSubmitterToUploadFile(formData)).toBe(false);
   });
 });

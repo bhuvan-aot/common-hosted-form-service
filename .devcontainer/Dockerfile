@@ -16,3 +16,8 @@ RUN apt-get update && \
         xauth \
         xvfb \
     && apt-get clean
+
+# Layer 5: Install global npm packages (changes with project dependencies)
+RUN npm install -g knex jest dotenv-cli
+
+# Layer 6: Ensure devcontainer scripts are executable (will be set during container startup)
