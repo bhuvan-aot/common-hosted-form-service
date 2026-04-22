@@ -9,6 +9,7 @@ const Form = require('../forms/common/models/tables/form');
 const FormGroup = require('../forms/common/models/tables/formGroup');
 const FormTenant = require('../forms/common/models/tables/formTenant');
 const uuid = require('uuid');
+const idpService = require('./idpService');
 
 class TenantService {
   /**
@@ -295,7 +296,8 @@ async function canCreateForm(req) {
   const idpCode = req.currentUser?.idp?.toLowerCase();
   const tenantId = req.currentUser?.tenantId;
 
-  if (idpCode !== 'idir') return false;
+  const idp = await idpService.findByCode(idpCode);
+  if (!idp?.primary) return false;
   if (!tenantId) return true;
 
   const groups = await module.exports.getUserTenantGroupsAndRoles(req);
