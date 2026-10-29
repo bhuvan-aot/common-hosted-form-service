@@ -334,6 +334,8 @@ describe('StatusPanel', () => {
     getEmailRecipientsSpy.mockResolvedValue({
       data: { emailRecipients: ['email@email.com'] },
     });
+    wrapper.vm.submissionUserEmail = '';
+    wrapper.vm.showSendConfirmEmail = false;
     await wrapper.vm.onStatusChange('COMPLETED');
     expect(wrapper.vm.submissionUserEmail).toEqual('email@email.com');
     expect(wrapper.vm.showSendConfirmEmail).toBeTruthy();
